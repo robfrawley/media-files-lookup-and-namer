@@ -1,3 +1,4 @@
+#!/usr/bin/env php
 <?php
 
 /**
@@ -9,12 +10,18 @@
  */
 
 $dirIn  = '/Users/rmf/Torrents/Queue/';
-$dirOut = '/Users/rmf/Torrents/Organized/';
+$dirOut = '/Volumes/External-2/Videos/TV/';
 $format = '%SHOW%/Season %SEASONFOLDER%/%SHOW% - %SEASON%%EPISODE%%TITLE%.%EXT%';
 
 $files  = scandir($dirIn);
 $count  = count($files);
 $i      = 1;
+$queue  = [];
+
+require __DIR__.DIRECTORY_SEPARATOR.'plex-common.php';
+
+echo "Plex Media Namer: TV\n";
+echo "by Rob Frawley\n";
 
 foreach ($files as $f) {
 
@@ -78,6 +85,7 @@ foreach ($files as $f) {
 		     "\n\ta. Add current title to the remove list".
 		     "\n\tz. Remove item from the remove list".
 		     "\n\tk. Skip this episode".
+                     "\n\tD. Skip this episode and delete file".
 		     "\n\tg. Perform operation...go!".
 		     "\n\nWhat would you like to do? [g]: ";
 		$input = trim(fgets(STDIN));
@@ -120,6 +128,11 @@ foreach ($files as $f) {
 			case 'k':
 				$skip = true;
 				break;
+
+                        case 'D':
+                                $skip = true;
+                                unlink($dirIn.$f);
+                                break;
 
 			case 'c':
 				$seasonMaybe = '00';
@@ -231,17 +244,15 @@ foreach ($files as $f) {
 
 	if ($skip !== true) {
 		$path = $dirOut.getNewName($show, $season, $episode, $episodeEnd, $fileext, $title, $dateBased);
-		$dir = pathinfo($path, PATHINFO_DIRNAME);
 
-		if (!is_dir($dir)) {
-			mkdir($dir, 0775, true);
-		}
+		echo "Queued: $path\n";
 
-		rename($dirIn.$f, $path);
-
-		echo "Moved to: $path\n";
+		$queue[] = [
+			$dirIn.$f,
+			$path
+		];
 	} else {
-		echo "SKIPPING!\n";
+		echo "Skipping!\n";
 		$skip = false;
 	}
 
@@ -249,7 +260,13 @@ foreach ($files as $f) {
 
 }
 
-echo 'DONE!';
+if (count($queue) > 0) {
+	handleQueue($queue);
+} else {
+	echo "\nNo items found...\n\n";
+}
+
+echo "Complete!\n";
 
 function performInitialFilenameParse($filename, $pattern = '#s?([0-9]{1,2}) ?[xe\.]([0-9]{1,2})#i') 
 {
@@ -313,77 +330,4 @@ function getNewName($show, $season, $episode, $episodeEnd, $ext, $title, $dateBa
 	$r = str_replace('%TITLE%', $title, $r);
 
 	return $r;
-}
-
-function cleanupTitle($t)
-{
-	$titleRemove = getRemoveList();
-
-	$t = cleanup($t);
-
-	foreach ($titleRemove as $r) {
-		$t = preg_replace('#'.$r.'#', '', $t);
-	}
-
-	$t = cleanup($t);
-
-	$t = trim($t);
-	if (empty($t)) {
-		$t = null;
-	} else {
-		$t = ucwords($t);
-	}
-
-	return $t;
-}
-
-function cleanup($s) 
-{
-	$s = str_replace('.', ' ', $s);
-	$s = str_replace('-', ' ', $s);
-	$s = preg_replace('[^a-z0-9 ]', '', $s);
-	$s = preg_replace('[\s+]', ' ', $s);
-	$s = trim($s);
-	$s = ucwords($s);
-
-	return $s;
-}
-
-function getRemoveList($file = 'remove-list.txt') 
-{
-	if (!is_readable($file)) {
-		return [];
-	}
-
-	return file($file, FILE_SKIP_EMPTY_LINES|FILE_IGNORE_NEW_LINES);
-}
-
-function addToRemoveList($item, $file = 'remove-list.txt') 
-{
-	if (!is_writable($file)) {
-		echo "\nERROR: File not writable!\n";
-		sleep(4);
-	}
-
-	file_put_contents($file, "\n".$item, FILE_APPEND);
-}
-
-function removeFromRemoveList($item, $file = 'remove-list.txt') 
-{
-	if (!is_writable($file)) {
-		echo "\nERROR: File not writable!\n";
-		sleep(4);
-	}
-
-	$removeList = getRemoveList($file);
-	$removeIndex = array_search($item, $removeList, false);
-
-	if ($removeIndex === false) {
-		echo "ERROR: Cannot remove the selected item as it does not exist!";
-		sleep(4);
-	}
-
-	unset($removeList[$removeIndex]);
-
-	file_put_contents($file, implode("\n", $removeList));
 }
