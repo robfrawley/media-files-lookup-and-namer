@@ -69,7 +69,8 @@ foreach ($files as $f) {
 		echo "\n";
 		echo "Original Path : $f\n";
 		echo "New Path      : ".getNewName($showMaybe, $seasonMaybe, $episodeMaybe, $episodeEndMaybe, $fileext, $titleMaybe, $dateBased)."\n";
-
+		echo "Filesize      : ".floor(filesize($dirIn.$f)/1024/1024)."MB\n";
+		
 		echo "\nActions:".
 		     "\n\ts. Edit season number".
 		     "\n\te. Edit episode start number".
