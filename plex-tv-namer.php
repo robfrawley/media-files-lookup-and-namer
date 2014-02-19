@@ -9,36 +9,40 @@
  * @license   MIT License
  */
 
-$dirIn  = '/Users/rmf/Torrents/Queue/';
-$dirOut = '/Volumes/External-2/Videos/TV/';
-$format = '%SHOW%/Season %SEASONFOLDER%/%SHOW% - %SEASON%%EPISODE%%TITLE%.%EXT%';
+$acceptedExts = ['mp4','mkv','avi','mov'];
+$dirIn  	  = '/Users/rmf/Torrents/Queue/';
+$dirOut 	  = '/Volumes/External-2/Videos/TV/';
+$format 	  = '%SHOW%/Season %SEASONFOLDER%/%SHOW% - %SEASON%%EPISODE%%TITLE%.%EXT%';
 
-$files  = scandir($dirIn);
+require __DIR__.DIRECTORY_SEPARATOR.'plex-common.php';
+require __DIR__.DIRECTORY_SEPARATOR.'plex-common-apikeys.php';
+
+$files  = performScan($dirIn, $acceptedExts);
 $count  = count($files);
 $i      = 1;
 $queue  = [];
 
-require __DIR__.DIRECTORY_SEPARATOR.'plex-common.php';
-
-echo "Plex Media Namer: TV\n";
-echo "by Rob Frawley\n";
+showWelcomeMessage('TV');
 
 foreach ($files as $f) {
 
-	if ($f == '.' || $f == '..' || substr($f, 0, 1) == '.') { 
-		continue; 
-	}
+	showItemHeader($i, $count);
 
-	echo "\n---------------------- [$i of $count] ----------------------\n";
+	list($filename, $fileext) = 
+		getFileInfo($f)
+	;
+	list($showMaybe, $seasonMaybe, $episodeMaybe, $titleMaybe) = 
+		performInitialTVFilenameParse($filename)
+	;
+	list($showMaybe, $seasonMaybe, $episodeMaybe, $titleMaybe, $lookupSuccess) = 
+		doTVEpisodeLookup($showMaybe, $seasonMaybe, $episodeMaybe, $titleMaybe)
+	;
 
-	$filename = pathinfo($f, PATHINFO_FILENAME);
-	$fileext  = pathinfo($f, PATHINFO_EXTENSION);
-
-	list($matches, $match, $offset, $offsetEnd, $episodeMaybe, $episodeEndMaybe, $seasonMaybe, $showMaybe, $titleMaybe) = performInitialFilenameParse($filename);
-
+	$episodeEndMaybe = null;
 	$loop      = true;
 	$skip      = false;
 	$dateBased = false;
+
 	while($loop) {
 
 		echo "\nShow          : $showMaybe\n";
@@ -65,6 +69,12 @@ foreach ($files as $f) {
 			echo "[null]\n";
 		} else {
 			echo "$titleMaybe\n";
+		}
+		echo "Lookup        : ";
+		if ($lookupSuccess === true) {
+			echo "Success\n";
+		} else {
+			echo "Failure\n";
 		}
 		echo "\n";
 		echo "Original Path : $f\n";
@@ -263,39 +273,15 @@ foreach ($files as $f) {
 
 if (count($queue) > 0) {
 	handleQueue($queue);
+	handleCleanup([$dirIn, $dirOut]);
+	echo "\n";
 } else {
 	echo "\nNo items found...\n\n";
+	handleCleanup([$dirIn, $dirOut]);
+	echo "\n";
 }
 
 echo "Complete!\n";
-
-function performInitialFilenameParse($filename, $pattern = '#s?([0-9]{1,2}) ?[xe\.]([0-9]{1,2})#i') 
-{
-	$matches       = [];
-	$filenameClean = preg_replace('#[^0-9a-z ]#i', ' ', $filename);
-	preg_match($pattern, $filenameClean, $matches, PREG_OFFSET_CAPTURE);
-
-	$match           = isset($matches[0][0]) ? $matches[0][0] : '';
-	$offset          = isset($matches[0][1]) ? $matches[0][1] : 0;
-	$offsetEnd       = isset($matches[2][1]) ? $matches[2][1]+strlen($matches[2][0]) : 0;
-	$episodeMaybe    = isset($matches[2][0]) ? $matches[2][0] : '';
-	$episodeEndMaybe = null;
-	$seasonMaybe     = isset($matches[1][0]) ? $matches[1][0] : '';
-	$showMaybe       = cleanup(substr($filenameClean, 0, $offset));
-	$titleMaybe      = cleanupTitle(substr($filenameClean, $offsetEnd));
-
-	return [
-		$matches,
-		$match,
-		$offset,
-		$offsetEnd,
-		$episodeMaybe,
-		$episodeEndMaybe,
-		$seasonMaybe,
-		$showMaybe,
-		$titleMaybe
-	];
-}
 
 function getNewName($show, $season, $episode, $episodeEnd, $ext, $title, $dateBased)
 {

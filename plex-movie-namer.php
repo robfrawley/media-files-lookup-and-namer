@@ -9,44 +9,42 @@
  * @license   MIT License
  */
 
-$dirIn  = '/Users/rmf/Torrents/QueueMovies/';
-$dirOut = '/Volumes/External-2/Videos/Movies/';
+$acceptedExts = ['mp4','mkv','avi','mov'];
+$dirIn  	  = '/Users/rmf/Torrents/QueueMovies/';
+$dirOut 	  = '/Volumes/External-2/Videos/Movies/';
 
-$files  = scandir($dirIn);
+require __DIR__.DIRECTORY_SEPARATOR.'plex-common.php';
+
+$files  = performScan($dirIn, $acceptedExts);
 $count  = count($files);
 $i      = 1;
 $queue  = [];
 
-require __DIR__.DIRECTORY_SEPARATOR.'plex-common.php';
-
-echo "Plex Media Namer: Movies\n";
-echo "by Rob Frawley\n";
+showWelcomeMessage('Movie');
 
 foreach ($files as $f) {
 
-	if ($f == '.' || $f == '..' || substr($f, 0, 1) == '.') { 
-		continue; 
-	}
-
-	echo "\n---------------------- [$i of $count] ----------------------\n";
+	showFileHeader($i, $count);
 
 	$filename = pathinfo($f, PATHINFO_FILENAME);
 	$fileext  = pathinfo($f, PATHINFO_EXTENSION);
 
-	list($yearMaybe, $showMaybe, $titleMaybe) = performInitialFilenameParse($filename);
+	list($yearMaybe, $showMaybe) = performInitialFilenameParse($filename);
+	$movieInfos = doLookup($showMaybe, $yearMaybe);
+
+	if (count($movieInfos) > 0) {
+		$yearMaybe = $movieInfos[0]->Year;
+		$showMaybe = $movieInfos[0]->Title;
+		$idMaybe   = $movieInfos[0]->imdbID;
+	}
 
 	$loop      = true;
 	$skip      = false;
+	$skipAll   = false;
 
 	while($loop) {
 
 		echo "\nMovie         : $showMaybe\n";
-		/*echo "Title         : ";
-		if ($titleMaybe === null) {
-			echo "[null]\n";
-		} else {
-			echo "$titleMaybe\n";
-		}*/
 		echo "Year          : ";
 		if ($yearMaybe === null) {
 			echo "[null]\n";
@@ -56,7 +54,7 @@ foreach ($files as $f) {
 
 		echo "\n";
 		echo "Original Path : $f\n";
-		echo "New Path      : ".getNewName($showMaybe, $titleMaybe, $yearMaybe, $fileext)."\n";
+		echo "New Path      : ".getNewName($showMaybe, $yearMaybe, $idMaybe, $fileext)."\n";
 		echo "Filesize      : ".floor(filesize($dirIn.$f)/1024/1024)."MB\n";
 
 		if (floor(filesize($dirIn.$f)/1024/1024) < 100) {
@@ -67,14 +65,20 @@ foreach ($files as $f) {
 		     "\n\tm. Edit movie name".
 		     //"\n\tt. Edit extended title".
 		     "\n\ty. Edit the year".
+		     "\n\tc. Clear imdbID".
+		     "\n\ti. Lookup by imdbID".
+		     "\n\tn. Lookup by general search".
 		     "\n\tp. Move to nrop".
-		     "\n\tx. Add item to the remove list".
-		     "\n\ta. Add current title to the remove list".
-		     "\n\tz. Remove item from the remove list".
 		     "\n\tk. Skip this movie".
+		     "\n\tK. Skip the rest".
              "\n\tD. Skip this movie and delete file".
-		     "\n\tg. Perform operation...go!".
-		     "\n\nWhat would you like to do? [g]: ";
+		     "\n\tg. Perform operation...go!"
+		;
+		echo "\n\nLookups:";
+		for ($j = 0; $j < count($movieInfos); $j++) {
+			echo "\n\t".($j+1).". ".$movieInfos[$j]->Title." [".$movieInfos[$j]->Year."] http://www.imdb.com/title/".$movieInfos[$j]->imdbID;
+		}
+		echo "\n\nWhat would you like to do? [g]: ";
 
 		$input = trim(fgets(STDIN));
 		if (empty($input)) {
@@ -83,17 +87,13 @@ foreach ($files as $f) {
 
 		switch ($input) {
 
+			case 'c':
+				$idMaybe = null;
+				continue;
+
 			case 'm':
 				echo "Enter new movie name: ";
 				$showMaybe = trim(fgets(STDIN));
-				continue;
-
-			case 't':
-				echo "Enter new extended title: ";
-				$titleMaybe = cleanupTitle(trim(fgets(STDIN)));
-				if (empty($titleMaybe)) {
-					$titleMaybe = null;
-				}
 				continue;
 
 			case 'p':
@@ -117,22 +117,30 @@ foreach ($files as $f) {
                     unlink($dirIn.$f);
                     break;
 
-			case 'x':
-				echo "\nCurrent items in remove list: \"".implode('", "', getRemoveList())."\"\n\n";
-				echo "Enter the regex you would like to add: ";
-				$removeListItem = trim(fgets(STDIN));
-				if (!empty($removeListItem)) {
-					addToRemoveList($removeListItem);
-					$titleMaybe = cleanupTitle($titleMaybe);
-				}
-				continue;
+            case 'n':
+            	echo "Enter your IMDB search string: ";
+				$search = trim(fgets(STDIN));
+            	$movieInfos = doLookup($search, null);
 
-			case 'a':
-				if (!empty($titleMaybe)) {
-					addToRemoveList($titleMaybe);
-					$titleMaybe = cleanupTitle($titleMaybe);
+				if (count($movieInfos) > 0) {
+					$yearMaybe = $movieInfos[0]->Year;
+					$showMaybe = $movieInfos[0]->Title;
+					$idMaybe   = $movieInfos[0]->imdbID;
 				}
-				continue;
+
+				break;
+            case 'i':
+            	echo "Enter your IMDB ID: ";
+				$search = trim(fgets(STDIN));
+            	$movieInfos = doLookupId($search, null);
+
+				if (count($movieInfos) > 0) {
+					$yearMaybe = $movieInfos[0]->Year;
+					$showMaybe = $movieInfos[0]->Title;
+					$idMaybe   = $movieInfos[0]->imdbID;
+				}
+
+				break;
 
 			case 'z':
 				echo "\nCurrent items in remove list: \"".implode('", "', getRemoveList())."\"\n\n";
@@ -144,15 +152,24 @@ foreach ($files as $f) {
 				}
 				continue;
 
+			case 'K':
+				$skipAll = true;
 			case 'g':
 				$show  = $showMaybe;
-				$title = $titleMaybe;
 				$year  = $yearMaybe;
 				$loop  = false;
 
 				break;
 
 			default:
+
+				$lookupInt = (int)$input;
+				if (array_key_exists($lookupInt-1, $movieInfos)) {
+					$yearMaybe = $movieInfos[$lookupInt-1]->Year;
+					$showMaybe = $movieInfos[$lookupInt-1]->Title;
+					$idMaybe   = $movieInfos[0]->imdbID;
+					break;
+				}
 
 				echo "\nError:\n\tAn invalid action option was provided.\n\tPlease try again";
 				sleep(1);
@@ -168,24 +185,32 @@ foreach ($files as $f) {
 
 		echo "\n";
 
-		if ($skip === true) {
+		if ($skip === true || $skipAll === true) {
 			break;
 		}
 
 	}
 
 	if ($skip !== true) {
-		$path = $dirOut.getNewName($show, $title, $year, $fileext);
+		$path = $dirOut.getNewName($show, $year, $idMaybe, $fileext);
 
-		echo "Queued: $path\n";
-
-		$queue[] = [
-			$dirIn.$f,
-			$path
-		];
+		if ($path == $dirIn.$f) {
+			echo "Not Queued: The in and out filepaths are the same...\n";
+		} else {
+			echo "Queued: $path\n";
+			
+			$queue[] = [
+				$dirIn.$f,
+				$path
+			];
+		}
 	} else {
 		echo "Skipping!\n";
 		$skip = false;
+	}
+
+	if ($skipAll === true) {
+		break;
 	}
 
 	$i++;
@@ -194,34 +219,55 @@ foreach ($files as $f) {
 
 if (count($queue) > 0) {
 	handleQueue($queue);
+	handleCleanup([$dirIn, $dirOut]);
+	echo "\n";
 } else {
 	echo "\nNo items found...\n\n";
+	handleCleanup([$dirIn, $dirOut]);
+	echo "\n";
 }
 
 echo "Complete!\n";
 
-function performInitialFilenameParse($filename, $pattern = '#([0-9]{4})#i') 
+function doLookup($title, $year = null)
 {
-	$matches       = [];
-	$filenameClean = preg_replace('#[^0-9a-z ]#i', ' ', $filename);
-	preg_match($pattern, $filenameClean, $matches, PREG_OFFSET_CAPTURE);
+	$apiUrl = 'http://www.omdbapi.com/?s='.urlencode($title);
+	if ($year !== null) {
+		$apiUrl .= '&y='.urlencode($year);
+	}
+	//echo $apiUrl;
+	$json = file_get_contents($apiUrl);
+	$info = json_decode($json);
+	
+	$items = @$info->Search;
 
-	$year            = isset($matches[0][0]) ? $matches[0][0] : '';
-	$offset          = isset($matches[0][1]) ? $matches[0][1] : 0;
-	$offsetEnd       = isset($matches[2][1]) ? $matches[2][1]+strlen($matches[2][0]) : 0;
-	$showMaybe       = cleanup(substr($filenameClean, 0, $offset));
-	$titleMaybe      = cleanupTitle(substr($filenameClean, $offsetEnd));
+	if (!count($items) > 0) {
+		return [];
+	}
 
-	return [
-		$year,
-		$showMaybe,
-		$titleMaybe
-	];
+	$movies = [];
+	for ($i = 0; $i < count($items); $i++) {
+		if ($items[$i]->Type != 'movie') {
+			continue;
+		}
+		$movies[] = $items[$i];
+	}
+
+	return $movies;
 }
 
-function getNewName($show, $title, $year, $ext)
+function doLookupId($id)
 {
-	$r = "$show";
+	$apiUrl = 'http://www.omdbapi.com/?i='.urlencode($id);
+	$json = file_get_contents($apiUrl);
+	$info = json_decode($json);
+	
+	return [$info];
+}
+
+function getNewName($show, $year, $id, $ext)
+{
+	$r = '.'.DIRECTORY_SEPARATOR."$show";
 
 	if ($year != null) {
 		$r = $r." [$year]";
@@ -235,8 +281,8 @@ function getNewName($show, $title, $year, $ext)
 		$r = $r." [$year]";
 	}
 
-	if ($title != null || !empty($title)) {
-		//$r = $r." ($title)";
+	if ($id !== null) {
+		$r = $r." [$id]";
 	}
 
 	$r = $r.".$ext";

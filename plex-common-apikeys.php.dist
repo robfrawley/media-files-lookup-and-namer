@@ -1,0 +1,2 @@
+<?php
+$traktApiKey = 'your-api-key-for-trakt.tv';
